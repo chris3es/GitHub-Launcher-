@@ -12,10 +12,10 @@
     <form onsubmit="login(event)">
       <label for="username">Username</label>
       <input type="text" id="username" required>
-      
+
       <label for="password">Password</label>
       <input type="password" id="password" required>
-      
+
       <button type="submit">Login</button>
     </form>
   </div>
@@ -24,6 +24,14 @@
     function login(e) {
       e.preventDefault();
       const user = document.getElementById("username").value;
+
+      // Save the username as the first profile if not already stored
+      let profiles = JSON.parse(localStorage.getItem("profiles")) || [];
+      if (!profiles.includes(user)) {
+        profiles.push(user);
+        localStorage.setItem("profiles", JSON.stringify(profiles));
+      }
+
       alert("Welcome " + user + "! Redirecting to launcher...");
       window.location.href = "index.html";
     }
