@@ -1,3 +1,8 @@
 document.getElementById("launchBtn").addEventListener("click", () => {
-  window.location.href = "game.html"; // Redirect to the game page
+  const version = document.getElementById("versionSelect").value;
+  const profile = document.getElementById("profileSelect").value;
+
+  // For now, just launch the version and show profile in console
+  console.log("Launching " + version + " with profile " + profile);
+  window.location.href = version;
 });
