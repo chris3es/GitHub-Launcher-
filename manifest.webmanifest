@@ -1,0 +1,11 @@
+{
+  "name": "Pixel Dodge",
+  "short_name": "Dodge",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0f1117",
+  "theme_color": "#79c0ff",
+  "icons": [
+    { "src": "favicon.svg", "sizes": "64x64", "type": "image/svg+xml" }
+  ]
+}
