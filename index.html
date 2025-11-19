@@ -1,50 +1,343 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Commit Quest Launcher</title>
-  <link rel="stylesheet" href="style.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mini Among Us</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="launcher">
-    <header>
-      <h1>Commit Quest Launcher</h1>
-      <span class="profile">Profile: 
-        <select id="profileSelect">
-          <option value="dev1">DevOne</option>
-          <option value="dev2">CoderCat</option>
-          <option value="dev3">OctoMaster</option>
-        </select>
-      </span>
-    </header>
+  <div id="app">
+    <div class="header">
+      <div class="brand">
+        <div class="title">Mini Among Us</div>
+        <div class="subtitle">WASD/Arrow keys to move · Space to interact</div>
+        <div class="legend">
+          <div class="crewmate"></div><div class="visor"></div> Crewmate
+          <div class="impostor"></div> Impostor
+        </div>
+      </div>
+      <div class="controls">
+        <button class="btn" id="resetBtn">Reset</button>
+        <button class="btn" id="pauseBtn">Pause</button>
+      </div>
+    </div>
 
-    <main>
-      <aside class="news">
-        <h2>News</h2>
-        <ul>
-          <li>⚡ Octocat skin released</li>
-          <li>🐛 Bug fixes</li>
-          <li>🚀 Performance improvements</li>
-        </ul>
-      </aside>
+    <div class="game">
+      <canvas id="canvas" width="900" height="520"></canvas>
+      <div class="hud">
+        <div class="panel" id="statusPanel">
+          <h4>Status</h4>
+          <div id="status"></div>
+        </div>
+        <div class="panel" id="tasksPanel">
+          <h4>Tasks</h4>
+          <div id="tasks"></div>
+        </div>
+      </div>
+    </div>
 
-      <section class="launch-area">
-        <label for="versionSelect">Version:</label>
-        <select id="versionSelect">
-          <option value="game.html">1.0 (Stable)</option>
-          <option value="game_v2.html">2.0 (Beta)</option>
-          <option value="game_classic.html">Classic</option>
-        </select>
-        <button id="launchBtn">▶ Play</button>
-      </section>
-    </main>
-
-    <footer>
-      <p>Powered by GitHub • Inspired by Minecraft Launcher</p>
-    </footer>
+    <div class="footer">
+      Tip: Finish all tasks while avoiding the impostor. Interact when near a task (press Space).
+    </div>
   </div>
 
-  <script src="script.js"></script>
+  <script>
+    // ===== Utility =====
+    const rand = (min, max) => Math.random() * (max - min) + min;
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+    // ===== Game constants =====
+    const WORLD = { w: 900, h: 520 };
+    const PLAYER = { speed: 2.6, radius: 10 };
+    const IMPOSTOR = { speed: 2.2, radius: 10, aggroRange: 300 };
+    const TASK_RADIUS = 10;
+    const INTERACT_RANGE = 24;
+    const WALLS = [
+      // Rectangles: x, y, w, h — a simple ship-like layout
+      {x: 80, y: 80, w: 740, h: 12},
+      {x: 80, y: 428, w: 740, h: 12},
+      {x: 80, y: 92, w: 12, h: 336},
+      {x: 808, y: 92, w: 12, h: 336},
+      // inner rooms/corridors
+      {x: 200, y: 160, w: 500, h: 10},
+      {x: 200, y: 350, w: 500, h: 10},
+      {x: 200, y: 160, w: 10, h: 200},
+      {x: 690, y: 160, w: 10, h: 200},
+      {x: 380, y: 160, w: 10, h: 100},
+      {x: 520, y: 270, w: 180, h: 10},
+    ];
+
+    const TASKS_INIT = [
+      { id: 'Wires', x: 130, y: 130, t: 1400 },
+      { id: 'Download', x: 770, y: 130, t: 1800 },
+      { id: 'Calibrate', x: 130, y: 390, t: 1600 },
+      { id: 'Swipe', x: 770, y: 390, t: 2000 },
+      { id: 'Fuel', x: 320, y: 250, t: 1500 },
+      { id: 'Prime Shields', x: 620, y: 250, t: 1500 },
+    ];
+
+    // ===== State =====
+    const state = {
+      running: true,
+      win: false,
+      lose: false,
+      player: { x: 130, y: 250, vx: 0, vy: 0 },
+      impostor: { x: 770, y: 250, vx: 0, vy: 0, cooldown: 0 },
+      tasks: TASKS_INIT.map(t => ({ ...t, done: false, progress: 0 })),
+      keys: new Set(),
+      interactHold: 0,
+    };
+
+    // ===== DOM =====
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const statusDiv = document.getElementById('status');
+    const tasksDiv = document.getElementById('tasks');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const resetBtn = document.getElementById('resetBtn');
+
+    // ===== Input =====
+    const KEYMAP = {
+      ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+      w: 'up', a: 'left', s: 'down', d: 'right', ' ': 'space'
+    };
+    window.addEventListener('keydown', (e) => {
+      const k = KEYMAP[e.key]; if (!k) return;
+      state.keys.add(k);
+      if (k === 'space') e.preventDefault();
+    });
+    window.addEventListener('keyup', (e) => {
+      const k = KEYMAP[e.key]; if (!k) return;
+      state.keys.delete(k);
+    });
+    pauseBtn.addEventListener('click', () => {
+      state.running = !state.running;
+      pauseBtn.textContent = state.running ? 'Pause' : 'Resume';
+    });
+    resetBtn.addEventListener('click', () => reset());
+
+    // ===== Collision helpers =====
+    function circleRectCollide(cx, cy, r, rect) {
+      const nearestX = clamp(cx, rect.x, rect.x + rect.w);
+      const nearestY = clamp(cy, rect.y, rect.y + rect.h);
+      const dx = cx - nearestX;
+      const dy = cy - nearestY;
+      return (dx*dx + dy*dy) < r*r;
+    }
+    function resolveWalls(entity) {
+      for (const w of WALLS) {
+        if (circleRectCollide(entity.x, entity.y, PLAYER.radius, w)) {
+          // Push out along smallest axis
+          const left = entity.x - w.x;
+          const right = (w.x + w.w) - entity.x;
+          const top = entity.y - w.y;
+          const bottom = (w.y + w.h) - entity.y;
+          const minX = Math.min(Math.abs(left), Math.abs(right));
+          const minY = Math.min(Math.abs(top), Math.abs(bottom));
+          if (minX < minY) {
+            entity.x += (Math.abs(left) < Math.abs(right)) ? -minX : minX;
+          } else {
+            entity.y += (Math.abs(top) < Math.abs(bottom)) ? -minY : minY;
+          }
+        }
+      }
+      // Bounds
+      entity.x = clamp(entity.x, 20, WORLD.w - 20);
+      entity.y = clamp(entity.y, 20, WORLD.h - 20);
+    }
+
+    // ===== Game logic =====
+    function update(dt) {
+      if (!state.running || state.win || state.lose) return;
+
+      // Player movement
+      const p = state.player;
+      const speed = PLAYER.speed;
+      p.vx = (state.keys.has('right') - state.keys.has('left')) * speed;
+      p.vy = (state.keys.has('down') - state.keys.has('up')) * speed;
+      const mag = Math.hypot(p.vx, p.vy);
+      if (mag > speed) { p.vx *= speed / mag; p.vy *= speed / mag; }
+      p.x += p.vx; p.y += p.vy;
+      resolveWalls(p);
+
+      // Impostor AI
+      const i = state.impostor;
+      const d = dist(p, i);
+      let target = null;
+      if (d < IMPOSTOR.aggroRange) target = p;
+      // Wander if not aggro
+      if (!target) {
+        if (i.cooldown <= 0) {
+          i.vx = rand(-1, 1) * IMPOSTOR.speed * 0.6;
+          i.vy = rand(-1, 1) * IMPOSTOR.speed * 0.6;
+          i.cooldown = rand(0.6, 1.6);
+        } else {
+          i.cooldown -= dt;
+        }
+      } else {
+        const dx = target.x - i.x;
+        const dy = target.y - i.y;
+        const len = Math.hypot(dx, dy) || 1;
+        i.vx = (dx / len) * IMPOSTOR.speed;
+        i.vy = (dy / len) * IMPOSTOR.speed;
+      }
+      i.x += i.vx; i.y += i.vy;
+      resolveWalls(i);
+
+      // Catch check
+      if (dist(p, i) < PLAYER.radius + IMPOSTOR.radius + 2) {
+        state.lose = true;
+      }
+
+      // Tasks + interaction
+      const nearTask = state.tasks.find(t => !t.done && Math.hypot(p.x - t.x, p.y - t.y) < INTERACT_RANGE);
+      if (nearTask && state.keys.has('space')) {
+        nearTask.progress = Math.min(nearTask.t, nearTask.progress + dt * 1000);
+        if (nearTask.progress >= nearTask.t) nearTask.done = true;
+      } else {
+        // decay slight if not interacting (keeps pressure)
+        if (nearTask && nearTask.progress > 0 && !state.keys.has('space')) {
+          nearTask.progress = Math.max(0, nearTask.progress - dt * 300);
+        }
+      }
+
+      // Win check
+      if (state.tasks.every(t => t.done)) {
+        state.win = true;
+      }
+    }
+
+    // ===== Render =====
+    function draw() {
+      // Clear
+      ctx.clearRect(0, 0, WORLD.w, WORLD.h);
+
+      // Background stars
+      ctx.fillStyle = '#0b0e24';
+      ctx.fillRect(0, 0, WORLD.w, WORLD.h);
+      ctx.fillStyle = '#1a1f43';
+      for (let s = 0; s < 120; s++) {
+        const x = (s * 57) % WORLD.w;
+        const y = (s * 97) % WORLD.h;
+        ctx.globalAlpha = 0.15 + (s % 5) * 0.05;
+        ctx.fillRect(x, y, 2, 2);
+      }
+      ctx.globalAlpha = 1;
+
+      // Walls
+      for (const w of WALLS) {
+        ctx.fillStyle = '#2a315f';
+        ctx.fillRect(w.x, w.y, w.w, w.h);
+        ctx.strokeStyle = '#43508e';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(w.x + 0.5, w.y + 0.5, w.w - 1, w.h - 1);
+      }
+
+      // Tasks nodes
+      for (const t of state.tasks) {
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, TASK_RADIUS, 0, Math.PI*2);
+        ctx.closePath();
+        ctx.fillStyle = t.done ? '#7bed9f' : '#ffdd57';
+        ctx.shadowColor = ctx.fillStyle;
+        ctx.shadowBlur = 8;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Progress ring
+        if (!t.done && t.progress > 0) {
+          ctx.strokeStyle = '#9cf0ff';
+          ctx.lineWidth = 3;
+          const pct = t.progress / t.t;
+          ctx.beginPath();
+          ctx.arc(t.x, t.y, TASK_RADIUS + 6, -Math.PI/2, -Math.PI/2 + pct * Math.PI*2);
+          ctx.stroke();
+        }
+      }
+
+      // Crewmate (player)
+      drawCrewmate(state.player.x, state.player.y, '#e74c3c');
+
+      // Impostor
+      drawCrewmate(state.impostor.x, state.impostor.y, '#8e44ad');
+
+      // Status HUD
+      const remaining = state.tasks.filter(t => !t.done).length;
+      const lines = [];
+      if (state.win) lines.push('Victory: All tasks completed!');
+      else if (state.lose) lines.push('Defeat: Caught by the impostor.');
+      else lines.push(`Tasks remaining: ${remaining}`);
+      lines.push(`Use Space near a task to complete it.`);
+      statusDiv.innerHTML = lines.map(l => `<div>${l}</div>`).join('');
+
+      // Task list HUD
+      tasksDiv.innerHTML = state.tasks.map(t => {
+        const pct = Math.floor((t.progress / t.t) * 100);
+        return `<div class="task ${t.done ? 'completed' : ''}">
+          <div class="dot"></div>
+          <div><strong>${t.id}:</strong> ${t.done ? 'Done' : pct + '%'}</div>
+        </div>`;
+      }).join('');
+    }
+
+    function drawCrewmate(x, y, color) {
+      // Body
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.roundRect(x - 12, y - 14, 24, 28, 6);
+      ctx.fill();
+
+      // Backpack
+      ctx.fillStyle = shade(color, -20);
+      ctx.beginPath();
+      ctx.roundRect(x + 10, y - 8, 10, 16, 3);
+      ctx.fill();
+
+      // Visor
+      ctx.fillStyle = '#9cf0ff';
+      ctx.beginPath();
+      ctx.roundRect(x - 6, y - 6, 14, 10, 4);
+      ctx.fill();
+
+      // Outline
+      ctx.strokeStyle = '#0b0e24';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    function shade(hex, pct) {
+      // Simple color shade for backpack
+      const c = hex.replace('#','');
+      const r = parseInt(c.substring(0,2),16);
+      const g = parseInt(c.substring(2,4),16);
+      const b = parseInt(c.substring(4,6),16);
+      const f = (v) => clamp(Math.round(v + (pct/100)*255), 0, 255);
+      return '#' + [f(r), f(g), f(b)].map(v => v.toString(16).padStart(2,'0')).join('');
+    }
+
+    // ===== Loop =====
+    let last = performance.now();
+    function frame(now) {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      update(dt);
+      draw();
+      requestAnimationFrame(frame);
+    }
+    function reset() {
+      state.running = true;
+      state.win = false;
+      state.lose = false;
+      state.player = { x: 130, y: 250, vx: 0, vy: 0 };
+      state.impostor = { x: 770, y: 250, vx: 0, vy: 0, cooldown: 0 };
+      state.tasks = TASKS_INIT.map(t => ({ ...t, done: false, progress: 0 }));
+      pauseBtn.textContent = 'Pause';
+    }
+
+    // Start
+    requestAnimationFrame(frame);
+  </script>
 </body>
 </html>
