@@ -1,0 +1,15 @@
+<!-- favicon.svg -->
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="g" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#12141a"/>
+      <stop offset="1" stop-color="#0f1117"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="12" fill="url(#g)" stroke="#232630" stroke-width="2"/>
+  <rect x="22" y="22" width="20" height="20" rx="2" fill="#79c0ff"/>
+  <rect x="12" y="10" width="4" height="44" fill="rgba(255,255,255,0.08)"/>
+  <rect x="24" y="10" width="4" height="44" fill="rgba(255,255,255,0.08)"/>
+  <rect x="36" y="10" width="4" height="44" fill="rgba(255,255,255,0.08)"/>
+  <rect x="48" y="10" width="4" height="44" fill="rgba(255,255,255,0.08)"/>
+</svg>
