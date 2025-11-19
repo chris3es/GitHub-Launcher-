@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>About • Pixel Dodge</title>
+  <meta name="description" content="What Pixel Dodge is and how to extend it." />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="./">
+      <img class="brand-mark" src="favicon.svg" alt="" aria-hidden="true" />
+      <span class="brand-name">Pixel Dodge</span>
+    </a>
+    <nav class="site-nav">
+      <a href="./">Play</a>
+      <a href="about.html" aria-current="page">About</a>
+      <a href="https://github.com/your-username/pixel-dodge" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+
+  <main class="content">
+    <section class="prose">
+      <h1>About this game</h1>
+      <p>Pixel Dodge is a minimalist canvas game. You control a square, dodge falling hazards, and push your score higher as difficulty increases.</p>
+      <h2>How it works</h2>
+      <ul>
+        <li><strong>Loop:</strong> Fixed timestep update, requestAnimationFrame render.</li>
+        <li><strong>Persistence:</strong> Best score saved in localStorage.</li>
+        <li><strong>Controls:</strong> Keyboard and clickable buttons for pause/restart.</li>
+      </ul>
+      <h2>Extend</h2>
+      <ul>
+        <li><strong>Hazards:</strong> Add new types with movement patterns and colors.</li>
+        <li><strong>Audio:</strong> Hook WebAudio for hits and milestones.</li>
+        <li><strong>Themes:</strong> Adjust CSS variables for brand colors and typography.</li>
+      </ul>
+      <p>Pull requests and forks welcome.</p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p><span class="muted">©</span> Pixel Dodge — Built with HTML/JS Canvas</p>
+    <p><a href="./">Play</a> • <a href="https://github.com/your-username/pixel-dodge">Source</a></p>
+  </footer>
+</body>
+</html>
