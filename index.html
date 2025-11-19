@@ -3,315 +3,189 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Mini Among Us</title>
-  <link rel="stylesheet" href="style.css" />
-  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap" rel="stylesheet">
+  <title>Pixel Dodge</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { margin: 0; height: 100%; background: #0f0f13; font-family: system-ui, sans-serif; }
+    #wrap { display: grid; place-items: center; height: 100%; }
+    canvas { background: linear-gradient(180deg, #12141a 0%, #0f1117 100%); border: 1px solid #232630; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+    #hud { position: fixed; top: 12px; left: 12px; color: #c9d1d9; font-size: 14px; }
+    #hud span { margin-right: 12px; }
+    #cta { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #8b949e; font-size: 13px; }
+  </style>
 </head>
 <body>
-  <div id="app">
-    <div class="header">
-      <div class="brand">
-        <div class="title">Mini Among Us</div>
-        <div class="subtitle">WASD/Arrow keys to move · Space to interact</div>
-      </div>
-      <div class="controls">
-        <button class="btn" id="resetBtn">Reset</button>
-        <button class="btn" id="pauseBtn">Pause</button>
-      </div>
-    </div>
-
-    <div class="game">
-      <canvas id="canvas" width="900" height="520"></canvas>
-      <div class="hud">
-        <div class="panel" id="statusPanel">
-          <h4>Status</h4>
-          <div id="status"></div>
-        </div>
-        <div class="panel" id="tasksPanel">
-          <h4>Tasks</h4>
-          <div id="tasks"></div>
-        </div>
-      </div>
-      <div id="progressBar"><div id="progressFill"></div></div>
-      <canvas id="miniMap" width="150" height="100"></canvas>
-    </div>
-
-    <div class="footer">
-      Tip: Finish all tasks while avoiding the impostor. Interact when near a task (press Space).
-    </div>
+  <div id="wrap"><canvas id="game" width="640" height="360"></canvas></div>
+  <div id="hud">
+    <span>Score: <strong id="score">0.0</strong></span>
+    <span>Best: <strong id="best">0.0</strong></span>
+    <span>Lives: <strong id="lives">3</strong></span>
   </div>
-
-  <!-- Start Screen -->
-  <div id="startScreen" class="overlay">
-    <h1>Mini Among Us</h1>
-    <button class="btn" id="startBtn">Start Game</button>
-  </div>
-
-  <!-- End Screen -->
-  <div id="endScreen" class="overlay" style="display:none;">
-    <h1 id="endMessage"></h1>
-    <button class="btn" id="restartBtn">Play Again</button>
-  </div>
-
+  <div id="cta">WASD / Arrows to move • P to pause • R to restart</div>
   <script>
-    // ===== Utility =====
-    const rand = (min, max) => Math.random() * (max - min) + min;
-    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    const scoreEl = document.getElementById('score');
+    const bestEl  = document.getElementById('best');
+    const livesEl = document.getElementById('lives');
 
-    // ===== Constants =====
-    const WORLD = { w: 900, h: 520 };
-    const PLAYER = { speed: 2.6, radius: 10 };
-    const IMPOSTOR = { speed: 2.2, radius: 10, aggroRange: 300 };
-    const TASK_RADIUS = 10;
-    const INTERACT_RANGE = 24;
-    const WALLS = [
-      {x: 80, y: 80, w: 740, h: 12},
-      {x: 80, y: 428, w: 740, h: 12},
-      {x: 80, y: 92, w: 12, h: 336},
-      {x: 808, y: 92, w: 12, h: 336},
-      {x: 200, y: 160, w: 500, h: 10},
-      {x: 200, y: 350, w: 500, h: 10},
-      {x: 200, y: 160, w: 10, h: 200},
-      {x: 690, y: 160, w: 10, h: 200},
-      {x: 380, y: 160, w: 10, h: 100},
-      {x: 520, y: 270, w: 180, h: 10},
-    ];
+    const W = canvas.width, H = canvas.height;
 
-    const TASKS_INIT = [
-      { id: 'Wires', x: 130, y: 130, t: 1400 },
-      { id: 'Download', x: 770, y: 130, t: 1800 },
-      { id: 'Calibrate', x: 130, y: 390, t: 1600 },
-      { id: 'Swipe', x: 770, y: 390, t: 2000 },
-      { id: 'Fuel', x: 320, y: 250, t: 1500 },
-      { id: 'Prime Shields', x: 620, y: 250, t: 1500 },
-    ];
+    const keys = new Set();
+    addEventListener('keydown', e => { keys.add(e.key.toLowerCase()); if ([' ', 'arrowup'].includes(e.key.toLowerCase())) e.preventDefault(); });
+    addEventListener('keyup',   e => keys.delete(e.key.toLowerCase()));
 
-    // ===== State =====
+    const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+    const rand  = (a, b) => a + Math.random() * (b - a);
+
     const state = {
-      running: false,
-      win: false,
-      lose: false,
-      player: { x: 130, y: 250, vx: 0, vy: 0 },
-      impostor: { x: 770, y: 250, vx: 0, vy: 0, cooldown: 0 },
-      tasks: TASKS_INIT.map(t => ({ ...t, done: false, progress: 0 })),
-      keys: new Set(),
+      running: true,
+      score: 0,
+      best: +(localStorage.getItem('pd.best') || 0),
+      lives: 3,
+      t: 0,
+      difficulty: 1,
+      player: { x: W/2, y: H-40, w: 22, h: 22, speed: 210 },
+      hazards: [],
+      spawnTimer: 0,
     };
+    bestEl.textContent = state.best.toFixed(1);
 
-    // ===== DOM =====
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const statusDiv = document.getElementById('status');
-    const tasksDiv = document.getElementById('tasks');
-    const pauseBtn = document.getElementById('pauseBtn');
-    const resetBtn = document.getElementById('resetBtn');
-    const startScreen = document.getElementById('startScreen');
-    const endScreen = document.getElementById('endScreen');
-    const endMessage = document.getElementById('endMessage');
-
-    // ===== Input =====
-    const KEYMAP = {
-      ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
-      w: 'up', a: 'left', s: 'down', d: 'right', ' ': 'space'
-    };
-    window.addEventListener('keydown', (e) => {
-      const k = KEYMAP[e.key]; if (!k) return;
-      state.keys.add(k);
-      if (k === 'space') e.preventDefault();
-    });
-    window.addEventListener('keyup', (e) => {
-      const k = KEYMAP[e.key]; if (!k) return;
-      state.keys.delete(k);
-    });
-    pauseBtn.addEventListener('click', () => {
-      state.running = !state.running;
-      pauseBtn.textContent = state.running ? 'Pause' : 'Resume';
-    });
-    resetBtn.addEventListener('click', () => reset());
-    document.getElementById('startBtn').addEventListener('click', () => {
-      startScreen.style.display = 'none';
-      reset();
-      state.running = true;
-    });
-    document.getElementById('restartBtn').addEventListener('click', () => {
-      endScreen.style.display = 'none';
-      reset();
-      state.running = true;
-    });
-
-    // ===== Collision =====
-    function circleRectCollide(cx, cy, r, rect) {
-      const nearestX = clamp(cx, rect.x, rect.x + rect.w);
-      const nearestY = clamp(cy, rect.y, rect.y + rect.h);
-      const dx = cx - nearestX;
-      const dy = cy - nearestY;
-      return (dx*dx + dy*dy) < r*r;
+    function reset(full=false) {
+      state.score = 0;
+      state.t = 0;
+      state.difficulty = 1;
+      state.player.x = W/2;
+      state.player.y = H - 40;
+      state.hazards.length = 0;
+      state.spawnTimer = 0;
+      if (full) { state.lives = 3; }
+      livesEl.textContent = state.lives;
     }
-    function resolveWalls(entity) {
-      for (const w of WALLS) {
-        if (circleRectCollide(entity.x, entity.y, PLAYER.radius, w)) {
-          entity.x = clamp(entity.x, w.x - PLAYER.radius, w.x + w.w + PLAYER.radius);
-          entity.y = clamp(entity.y, w.y - PLAYER.radius, w.y + w.h + PLAYER.radius);
-        }
-      }
-      entity.x = clamp(entity.x, 20, WORLD.w - 20);
-      entity.y = clamp(entity.y, 20, WORLD.h - 20);
+    function togglePause() { state.running = !state.running; }
+
+    addEventListener('keypress', e => {
+      const k = e.key.toLowerCase();
+      if (k === 'p') togglePause();
+      if (k === 'r') { reset(true); state.running = true; }
+    });
+
+    function spawnHazard() {
+      const size = rand(10, 28);
+      const x = rand(size, W - size);
+      const speed = rand(80, 180) * (0.7 + state.difficulty * 0.3);
+      const type = Math.random() < 0.15 ? 'zig' : 'fall';
+      const color = type === 'zig' ? '#ff8c69' : '#5aa9ff';
+      state.hazards.push({ x, y: -size, w: size, h: size, vy: speed, vx: (type==='zig'? rand(-60,60):0), type, color });
     }
 
-    // ===== Game logic =====
     function update(dt) {
-      if (!state.running || state.win || state.lose) return;
+      // difficulty scales with time, slows spawning at start, faster later
+      state.t += dt;
+      state.difficulty = 1 + state.t * 0.08;
 
-      // Player movement
+      // player input
       const p = state.player;
-      const speed = PLAYER.speed;
-      p.vx = (state.keys.has('right') - state.keys.has('left')) * speed;
-      p.vy = (state.keys.has('down') - state.keys.has('up')) * speed;
-      p.x += p.vx; p.y += p.vy;
-      resolveWalls(p);
+      const left  = keys.has('a') || keys.has('arrowleft');
+      const right = keys.has('d') || keys.has('arrowright');
+      const up    = keys.has('w') || keys.has('arrowup');
+      const down  = keys.has('s') || keys.has('arrowdown');
 
-      // Impostor AI
-      const i = state.impostor;
-      const d = dist(p, i);
-      if (d < IMPOSTOR.aggroRange) {
-        const dx = p.x - i.x, dy = p.y - i.y;
-        const len = Math.hypot(dx, dy) || 1;
-        i.vx = (dx / len) * IMPOSTOR.speed;
-        i.vy = (dy / len) * IMPOSTOR.speed;
-      } else {
-        if (i.cooldown <= 0) {
-          i.vx = rand(-1, 1) * IMPOSTOR.speed * 0.6;
-          i.vy = rand(-1, 1) * IMPOSTOR.speed * 0.6;
-          i.cooldown = rand(0.6, 1.6);
-        } else {
-          i.cooldown -= dt;
+      p.x += (right - left) * p.speed * dt;
+      p.y += (down - up)     * p.speed * dt;
+      p.x = clamp(p.x, p.w/2, W - p.w/2);
+      p.y = clamp(p.y, p.h/2, H - p.h/2);
+
+      // spawn timing
+      state.spawnTimer -= dt;
+      const spawnRate = clamp(0.9 - state.t * 0.03, 0.18, 0.9); // seconds
+      if (state.spawnTimer <= 0) {
+        spawnHazard();
+        state.spawnTimer = spawnRate;
+      }
+
+      // hazards movement
+      for (const h of state.hazards) {
+        h.y += h.vy * dt;
+        h.x += h.vx * dt;
+        if (h.type === 'zig') h.vx += Math.sin(state.t * 2.2) * 8 * dt;
+      }
+      // remove off-screen
+      for (let i = state.hazards.length - 1; i >= 0; i--) {
+        if (state.hazards[i].y - state.hazards[i].h > H) state.hazards.splice(i, 1);
+      }
+
+      // collisions
+      for (let i = state.hazards.length - 1; i >= 0; i--) {
+        const h = state.hazards[i];
+        if (Math.abs(p.x - h.x) < (p.w/2 + h.w/2) && Math.abs(p.y - h.y) < (p.h/2 + h.h/2)) {
+          state.hazards.splice(i, 1);
+          state.lives--;
+          livesEl.textContent = state.lives;
+          if (state.lives <= 0) { gameOver(); break; }
         }
       }
-      i.x += i.vx; i.y += i.vy;
-      resolveWalls(i);
 
-      // Catch check
-      if (dist(p, i) < PLAYER.radius + IMPOSTOR.radius + 2) {
-        state.lose = true;
-        showEndScreen("Defeat! The impostor caught you!");
-      }
-
-      // Tasks + interaction
-      const nearTask = state.tasks.find(t => !t.done && Math.hypot(p.x - t.x, p.y - t.y) < INTERACT_RANGE);
-      if (nearTask && state.keys.has('space')) {
-        nearTask.progress = Math.min(nearTask.t, nearTask.progress + dt * 1000);
-        if (nearTask.progress >= nearTask.t) nearTask.done = true;
-      }
-
-      // Win check
-      if (state.tasks.every(t => t.done)) {
-        state.win = true;
-        showEndScreen("Victory! All tasks completed!");
-      }
-
-      updateProgressBar();
+      // scoring
+      state.score += dt * 10 * Math.sqrt(state.difficulty);
+      scoreEl.textContent = state.score.toFixed(1);
     }
 
-    // ===== Render =====
-    function draw() {
-      ctx.clearRect(0, 0, WORLD.w, WORLD.h);
-
-      // Background
-      ctx.fillStyle = '#0b0e24';
-      ctx.fillRect(0, 0, WORLD.w, WORLD.h);
-
-      // Walls
-      for (const w of WALLS) {
-        ctx.fillStyle = '#2a315f';
-        ctx.fillRect(w.x, w.y, w.w, w.h);
-      }
-
-      // Tasks
-      for (const t of state.tasks) {
-        ctx.beginPath();
-        ctx.arc(t.x, t.y, TASK_RADIUS, 0, Math.PI*2);
-        ctx.fillStyle = t.done ? '#7bed9f' : '#ffdd57';
-        ctx.fill();
-      }
-
-      // Crewmate
-      drawCrewmate(state.player.x, state.player.y, '#e74c3c');
-      // Impostor
-      drawCrewmate(state.impostor.x, state.impostor.y, '#8e44ad');
-
-      // HUD
-      const remaining = state.tasks.filter(t => !t.done).length;
-      statusDiv.innerHTML = state.win ? "Victory!" :
-                            state.lose ? "Defeat!" :
-                            `Tasks remaining: ${remaining}`;
-      tasksDiv.innerHTML = state.tasks.map(t =>
-        `<div class="task ${t.done ? 'completed' : ''}">
-          <div class="dot"></div>${t.id}: ${t.done ? 'Done' : Math.floor((t.progress/t.t)*100)+'%'}
-        </div>`).join('');
-
-      drawMiniMap();
-    }
-
-    function drawCrewmate(x, y, color) {
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.roundRect(x - 12, y - 14, 24, 28, 6);
-      ctx.fill();
-      ctx.fillStyle = '#9cf0ff';
-      ctx.beginPath();
-      ctx.roundRect(x - 6, y - 6, 14, 10, 4);
-      ctx.fill();
-    }
-
-    function drawMiniMap() {
-      const mm = document.getElementById('miniMap').getContext('2d');
-      mm.clearRect(0,0,150,100);
-      mm.fillStyle = '#111';
-      mm.fillRect(0,0,150,100);
-      const scaleX = 150 / WORLD.w;
-      const scaleY = 100 / WORLD.h;
-      state.tasks.forEach(t => {
-        mm.fillStyle = t.done ? '#7bed9f' : '#ffdd57';
-        mm.fillRect(t.x*scaleX, t.y*scaleY, 4, 4);
-      });
-      mm.fillStyle = '#e74c3c';
-      mm.fillRect(state.player.x*scaleX, state.player.y*scaleY, 6, 6);
-      mm.fillStyle = '#8e44ad';
-      mm.fillRect(state.impostor.x*scaleX, state.impostor.y*scaleY, 6, 6);
-    }
-
-    function updateProgressBar() {
-      const done = state.tasks.filter(t => t.done).length;
-      const pct = (done / state.tasks.length) * 100;
-      document.getElementById('progressFill').style.width = pct + '%';
-    }
-
-    function showEndScreen(message) {
-      endMessage.textContent = message;
-      endScreen.style.display = 'flex';
+    function gameOver() {
       state.running = false;
+      state.best = Math.max(state.best, state.score);
+      localStorage.setItem('pd.best', state.best.toFixed(1));
+      bestEl.textContent = state.best.toFixed(1);
     }
 
-    function reset() {
-      state.win = false;
-      state.lose = false;
-      state.player = { x: 130, y: 250, vx: 0, vy: 0 };
-      state.impostor = { x: 770, y: 250, vx: 0, vy: 0, cooldown: 0 };
-      state.tasks = TASKS_INIT.map(t => ({ ...t, done: false, progress: 0 }));
-      pauseBtn.textContent = 'Pause';
-      updateProgressBar();
+    function render() {
+      // background
+      ctx.fillStyle = '#0f1117';
+      ctx.fillRect(0, 0, W, H);
+
+      // grid flair
+      ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < W; x += 32) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+      for (let y = 0; y < H; y += 32) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+      // player
+      const p = state.player;
+      ctx.fillStyle = '#79c0ff';
+      ctx.fillRect(p.x - p.w/2, p.y - p.h/2, p.w, p.h);
+
+      // hazards
+      for (const h of state.hazards) {
+        ctx.fillStyle = h.color;
+        ctx.fillRect(h.x - h.w/2, h.y - h.h/2, h.w, h.h);
+      }
+
+      // UI overlays
+      if (!state.running) {
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(0,0,W,H);
+        ctx.fillStyle = '#c9d1d9';
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 24px system-ui';
+        ctx.fillText('Game Over', W/2, H/2 - 20);
+        ctx.font = '14px system-ui';
+        ctx.fillText(`Score: ${state.score.toFixed(1)}   Best: ${state.best.toFixed(1)}`, W/2, H/2 + 10);
+        ctx.fillText('Press R to restart', W/2, H/2 + 36);
+      }
     }
 
-    // ===== Loop =====
-    let last = performance.now();
-    function frame(now) {
-      const dt = Math.min(0.05, (now - last) / 1000);
+    // fixed timestep update, rAF render
+    let acc = 0, last = performance.now(), step = 1/120;
+    function loop(now) {
+      const dt = Math.min(0.25, (now - last) / 1000);
       last = now;
-      update(dt);
-      draw();
-      requestAnimationFrame(frame);
+      if (state.running) acc += dt;
+      while (acc >= step) { update(step); acc -= step; }
+      render();
+      requestAnimationFrame(loop);
     }
-    requestAnimationFrame(frame);
+    reset(true);
+    requestAnimationFrame(loop);
   </script>
 </body>
 </html>
